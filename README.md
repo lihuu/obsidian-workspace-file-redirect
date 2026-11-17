@@ -68,6 +68,23 @@ A note that happens to be called `workspace.json`, or any `workspace.json` insid
 
 `saveLayout()` wraps the write in an empty `try{}catch{}`, so intercepting it produces no errors and no notices.
 
+### But reading is not enough — Obsidian reads *before* plugins load
+
+Redirecting reads alone does not restore your layout. Obsidian's startup does, roughly:
+
+```js
+startUp.loadingWorkspace();
+await workspace.loadLayout();   // ← happens before any community plugin is loaded
+```
+
+At that moment this plugin does not exist yet, so `loadLayout()` reads the *vault's* `workspace.json`, finds nothing, and falls back to the default empty layout — then saves that default right away, overwriting the good copy.
+
+So version 1.1.0 does two more things:
+
+1. **Waits for `onLayoutReady`, then puts the stored layout back** — via `workspace.changeLayout(stored)`, only when the file sets differ (no pointless reload on every launch).
+2. **Drops saves during that window**, so the empty default layout never lands on top of your stored one. Writes resume as soon as the layout is back.
+3. Keeps a `workspace.json.bak` snapshot on every startup, so a bad write is always recoverable.
+
 Net effect:
 
 - **Your layout is still remembered** — same behaviour as before, just stored somewhere else.

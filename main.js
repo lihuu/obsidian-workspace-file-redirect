@@ -6,6 +6,8 @@ const os = require("os");
 const DEFAULT_SETTINGS = {
   // 存放布局文件的本机目录（必须在 vault 之外，否则照样会被同步）
   targetDir: path.join(os.homedir(), ".config", "obsidian-workspace"),
+  // 调试日志：默认关闭（每次保存都会追加一行，长期开着会一直长）
+  debug: false,
 };
 
 module.exports = class WorkspaceFileRedirect extends Plugin {
@@ -34,8 +36,66 @@ module.exports = class WorkspaceFileRedirect extends Plugin {
     this.blockFs(fs);
     try { this.blockFs(require("original-fs")); } catch (e) {}
 
+    // ⑤ 找回布局：Obsidian 在插件加载之前就 loadLayout() 过了（那时读的是 vault 里
+    //    那个不存在的文件 → 回退默认空布局），所以只能等布局就绪后把它贴回去。
+    //    在这个窗口里掐掉保存，否则空布局会把本地那份覆盖掉。
+    this.restoring = true;
+    this.app.workspace.onLayoutReady(() => this.restoreLayout());
+    setTimeout(() => { this.restoring = false; }, 10000);
+
     this.addSettingTab(new WorkspaceFileRedirectTab(this.app, this));
     console.log(`[workspace-file-redirect] ${this.localPath}`);
+  }
+
+  // 当前布局里打开了哪些笔记（按文件名集合比较，不看随机的 leaf id）
+  collectFiles(node) {
+    const out = [];
+    const walk = (x) => {
+      if (!x || typeof x !== "object") return;
+      if (x.type === "leaf") {
+        const st = x.state;
+        if (st && st.type === "markdown" && st.state && st.state.file) out.push(st.state.file);
+        return;
+      }
+      for (const c of x.children || []) walk(c);
+    };
+    walk(node && node.main);
+    return out.sort();
+  }
+
+  async restoreLayout() {
+    let stored = null;
+    try {
+      const raw = fs.readFileSync(this.localPath, "utf8");
+      stored = JSON.parse(raw);
+      // 每次启动留一份备份，任何覆盖都还能捞回来
+      fs.writeFileSync(this.localPath + ".bak", raw);
+    } catch (e) { /* 没有历史布局，正常首次启动 */ }
+
+    if (stored && stored.main) {
+      const ws = this.app.workspace;
+      const have = this.collectFiles(ws.getLayout ? ws.getLayout() : null);
+      const want = this.collectFiles(stored);
+      this._log(`RESTORE have=[${have}] want=[${want}]`);
+      const same = have.length === want.length && have.every((f, i) => f === want[i]);
+      if (want.length && !same && typeof ws.changeLayout === "function") {
+        try {
+          await ws.changeLayout(stored);
+          this._log("RESTORE applied");
+        } catch (e) {
+          this._log("RESTORE failed " + (e && e.message));
+        }
+      }
+    }
+    this.restoring = false;
+  }
+
+  _log(what) {
+    if (!this.settings.debug) return;
+    try {
+      fs.appendFileSync(path.join(this.settings.targetDir, "redirect.log"),
+        `${new Date().toISOString()} ${what} ${this.app.vault.getName()}\n`);
+    } catch (e) {}
   }
 
   resolveLocalPath() {
@@ -76,6 +136,7 @@ module.exports = class WorkspaceFileRedirect extends Plugin {
     const self = this;
     adapter[name] = function (p, ...rest) {
       if (self.isRelTarget(p)) {
+        self._log("READ " + p);
         try { return Promise.resolve(fs.readFileSync(self.localPath, "utf8")); }
         catch (e) { return Promise.resolve("{}"); }
       }
@@ -90,6 +151,11 @@ module.exports = class WorkspaceFileRedirect extends Plugin {
     const self = this;
     adapter[name] = function (p, data, ...rest) {
       if (self.isRelTarget(p)) {
+        if (self.restoring) {
+          self._log("WRITE-SKIPPED(restoring) len=" + (data && data.length));
+          return Promise.resolve();
+        }
+        self._log("WRITE " + p + " len=" + (data && data.length));
         try {
           fs.mkdirSync(path.dirname(self.localPath), { recursive: true });
           self._writeFileSync(self.localPath, data);
@@ -173,6 +239,15 @@ class WorkspaceFileRedirectTab extends PluginSettingTab {
         })
       );
     containerEl.createEl("p", { text: `当前实际路径：${this.plugin.localPath}` });
+    new Setting(containerEl)
+      .setName("调试日志")
+      .setDesc(`开启后把读写事件追加到 ${DEFAULT_SETTINGS.targetDir}/redirect.log`)
+      .addToggle((t) =>
+        t.setValue(!!this.plugin.settings.debug).onChange(async (v) => {
+          this.plugin.settings.debug = v;
+          await this.plugin.saveSettings();
+        })
+      );
     containerEl.createEl("p", {
       text: `被接管的确切文件：${[...this.plugin.relTargets].join("、")}（只针对本 vault 配置目录，其他同名文件不受影响）`,
     });
