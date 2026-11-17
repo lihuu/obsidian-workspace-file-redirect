@@ -1,0 +1,10 @@
+{
+  "id": "workspace-redirect",
+  "name": "Workspace Redirect",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Redirect Obsidian's workspace layout file to a local folder outside the vault, so iCloud/Dropbox sync stops churning on it while the layout is still remembered.",
+  "author": "lihuu",
+  "authorUrl": "https://github.com/lihuu",
+  "isDesktopOnly": true
+}
