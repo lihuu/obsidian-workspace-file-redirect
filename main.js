@@ -12,11 +12,15 @@ const DEFAULT_SETTINGS = {
   targetDir: path.join(os.homedir(), ".config", "obsidian-workspace"),
 };
 
-module.exports = class WorkspaceRedirect extends Plugin {
+module.exports = class WorkspaceFileRedirect extends Plugin {
   async onload() {
     this.undo = [];
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.resolveLocalPath();
+
+    // 打补丁前先抓住原始写入函数：本地那份也叫 workspace.json，
+    // 会命中下面的 fs 兜底，所以重定向必须用未被拦截的原函数。
+    this._writeFileSync = fs.writeFileSync.bind(fs);
 
     const adapter = this.app.vault.adapter;
 
@@ -34,58 +38,57 @@ module.exports = class WorkspaceRedirect extends Plugin {
     this.blockFs(fs);
     try { this.blockFs(require("original-fs")); } catch (e) {}
 
-    this.addSettingTab(new WorkspaceRedirectTab(this.app, this));
-    console.log(`[workspace-redirect] 布局文件重定向到 ${this.localPath}`);
+    this.addSettingTab(new WorkspaceFileRedirectTab(this.app, this));
+    console.log(`[workspace-file-redirect] 布局文件重定向到 ${this.localPath}`);
   }
 
   resolveLocalPath() {
     const vault = this.app.vault.getName().replace(/[/:]/g, "-");
-    this.localPath = path.join(this.settings.targetDir, vault, "layout.json");
+    this.localPath = path.join(this.settings.targetDir, vault, "workspace.json");
   }
 
   redirectRead(adapter, name) {
     const orig = adapter[name];
     if (typeof orig !== "function") return;
+    const self = this;
     adapter[name] = function (p, ...rest) {
       if (isTarget(p)) {
-        try { return Promise.resolve(fs.readFileSync(this.__wrLocalPath, "utf8")); }
+        try { return Promise.resolve(fs.readFileSync(self.localPath, "utf8")); }
         catch (e) { return Promise.resolve("{}"); }
       }
       return orig.call(this, p, ...rest);
     };
-    adapter.__wrLocalPath = this.localPath;
     this.undo.push(() => { adapter[name] = orig; });
   }
 
   redirectWrite(adapter, name) {
     const orig = adapter[name];
     if (typeof orig !== "function") return;
+    const self = this;
     adapter[name] = function (p, data, ...rest) {
       if (isTarget(p)) {
-        const target = this.__wrLocalPath;
         try {
-          fs.mkdirSync(path.dirname(target), { recursive: true });
-          fs.writeFileSync(target, data);
-        } catch (e) { console.error("[workspace-redirect] 写入失败", e); }
+          fs.mkdirSync(path.dirname(self.localPath), { recursive: true });
+          self._writeFileSync(self.localPath, data);
+        } catch (e) { console.error("[workspace-file-redirect] 写入失败", e); }
         return Promise.resolve();
       }
       return orig.call(this, p, data, ...rest);
     };
-    adapter.__wrLocalPath = this.localPath;
     this.undo.push(() => { adapter[name] = orig; });
   }
 
   redirectExists(adapter, name) {
     const orig = adapter[name];
     if (typeof orig !== "function") return;
+    const self = this;
     adapter[name] = function (p, ...rest) {
       if (isTarget(p)) {
-        try { return Promise.resolve(fs.existsSync(this.__wrLocalPath)); }
+        try { return Promise.resolve(fs.existsSync(self.localPath)); }
         catch (e) { return Promise.resolve(false); }
       }
       return orig.call(this, p, ...rest);
     };
-    adapter.__wrLocalPath = this.localPath;
     this.undo.push(() => { adapter[name] = orig; });
   }
 
@@ -114,17 +117,16 @@ module.exports = class WorkspaceRedirect extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.resolveLocalPath();
-    this.app.vault.adapter.__wrLocalPath = this.localPath;
   }
 
   onunload() {
     for (const f of this.undo) f();
     this.undo = [];
-    console.log("[workspace-redirect] 已恢复原行为");
+    console.log("[workspace-file-redirect] 已恢复原行为");
   }
 };
 
-class WorkspaceRedirectTab extends PluginSettingTab {
+class WorkspaceFileRedirectTab extends PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -133,13 +135,13 @@ class WorkspaceRedirectTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h3", { text: "Workspace 重定向" });
+    containerEl.createEl("h3", { text: "Workspace 文件重定向" });
     containerEl.createEl("p", {
-      text: "Obsidian 的布局文件（workspace.json）不再读写 vault 里的那份，而是改用下面目录里的 layout.json。目录必须在 vault 之外，否则照样会被同步。",
+      text: "Obsidian 的布局文件（workspace.json）不再读写 vault 里的那份，而是改用下面目录里的同名文件。目录必须在 vault 之外，否则照样会被同步。",
     });
     new Setting(containerEl)
       .setName("存放目录")
-      .setDesc(`默认 ${DEFAULT_SETTINGS.targetDir}，实际文件为 <目录>/<vault 名>/layout.json`)
+      .setDesc(`默认 ${DEFAULT_SETTINGS.targetDir}，实际文件为 <目录>/<vault 名>/workspace.json`)
       .addText((t) =>
         t.setValue(this.plugin.settings.targetDir).onChange(async (v) => {
           this.plugin.settings.targetDir = v.trim() || DEFAULT_SETTINGS.targetDir;

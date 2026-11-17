@@ -52,7 +52,7 @@ async saveLayout() {
 
 | 方法 | 重定向后的行为 |
 |---|---|
-| `adapter.read` | 改读 `<存放目录>/<vault 名>/layout.json` |
+| `adapter.read` | 改读 `<存放目录>/<vault 名>/workspace.json` |
 | `adapter.write` / `writeBinary` | 改写到同一个本地文件 |
 | `adapter.exists` | 检查本地那份 |
 | Node `fs` 的 `writeFile` / `rename` | 兜底——绕过 adapter 的写入也进不了 vault |
@@ -83,7 +83,7 @@ async saveLayout() {
 
 ## 设置
 
-**存放目录** —— 默认 `~/.config/obsidian-workspace`，实际文件是 `<存放目录>/<vault 名>/layout.json`。
+**存放目录** —— 默认 `~/.config/obsidian-workspace`，实际文件是 `<存放目录>/<vault 名>/workspace.json`。
 
 > 目录必须在 vault **之外**。放进 vault 里等于没改，照样会被同步。
 

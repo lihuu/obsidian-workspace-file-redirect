@@ -52,7 +52,7 @@ A plugin runs in the same process, so this plugin wraps those methods:
 
 | Method | Redirected behaviour |
 |---|---|
-| `adapter.read` | reads `<targetDir>/<vault name>/layout.json` |
+| `adapter.read` | reads `<targetDir>/<vault name>/workspace.json` |
 | `adapter.write` / `writeBinary` | writes to the same local file |
 | `adapter.exists` | checks the local file |
 | Node `fs` `writeFile` / `rename` | safety net — anything bypassing the adapter still can't land in the vault |
@@ -83,7 +83,7 @@ Not yet in the community plugin list.
 
 ## Settings
 
-**Storage folder** — defaults to `~/.config/obsidian-workspace`. The actual file is `<folder>/<vault name>/layout.json`.
+**Storage folder** — defaults to `~/.config/obsidian-workspace`. The actual file is `<folder>/<vault name>/workspace.json`.
 
 > The folder must be **outside** the vault. Putting it inside the vault changes nothing — it would still be synced.
 
