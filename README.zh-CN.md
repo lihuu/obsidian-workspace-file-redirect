@@ -68,16 +68,28 @@ async saveLayout() {
 
 `saveLayout()` 外面套的是空的 `try{}catch{}`，所以拦截它不会产生任何报错或提示。
 
-### 只重定向「读」是不够的 —— Obsidian 在插件之前就读完了
+### 只重定向「读」是不够的（实测）
 
-只把读重定向出去，布局并不会被恢复。Obsidian 启动时大致是这样：
+直觉上把 `adapter.read` 劫持了布局就该恢复。事实不是。
 
-```js
-startUp.loadingWorkspace();
-await workspace.loadLayout();   // ← 在任何社区插件加载之前
+给每次重定向的读都打上调用栈，实测：
+
+```
+READ .obsidian/workspace.json
+  at adapter.<computed> [as read]   ← 我们的补丁
+  at Mw.readWorkspaceFile (app.js)
+  at Mw.loadLayout (app.js)
+  at o.initializeWithAdapter (app.js)
 ```
 
-那一刻本插件还不存在，于是 `loadLayout()` 读的是 vault 里那个已经不存在的文件 → 回退到默认空布局 → 然后立刻把这份空布局保存一次，正好覆盖掉你的布局。
+也就是说 `loadLayout()` **确实**走了我们的重定向、也确实拿到了我们那份文件 —— 但布局还是不出现。同一个存着三个标签的文件，只切换「恢复」这一步做 A/B：
+
+| 恢复步骤 | 重启后的标签 |
+|---|---|
+| 关 | **0 个**（文件被打回默认空布局） |
+| 开 | 3 个，和存的一模一样 |
+
+读到的内容为什么被丢掉，还没有定论（**推断**：`initializeWithAdapter` 在工作区树已建好之后又跑了一遍）。但已经确证的是：**没有显式恢复，默认布局就会把你的文件覆盖掉。**
 
 所以 v1.1.0 补了三件事：
 

@@ -68,18 +68,30 @@ A note that happens to be called `workspace.json`, or any `workspace.json` insid
 
 `saveLayout()` wraps the write in an empty `try{}catch{}`, so intercepting it produces no errors and no notices.
 
-### But reading is not enough — Obsidian reads *before* plugins load
+### Redirecting the read alone is *not* enough (measured)
 
-Redirecting reads alone does not restore your layout. Obsidian's startup does, roughly:
+You would expect that hijacking `adapter.read` is enough to restore the layout. It is not.
 
-```js
-startUp.loadingWorkspace();
-await workspace.loadLayout();   // ← happens before any community plugin is loaded
+Measured, with a stack trace on every redirected read:
+
+```
+READ .obsidian/workspace.json
+  at adapter.<computed> [as read]   ← our patch
+  at Mw.readWorkspaceFile (app.js)
+  at Mw.loadLayout (app.js)
+  at o.initializeWithAdapter (app.js)
 ```
 
-At that moment this plugin does not exist yet, so `loadLayout()` reads the *vault's* `workspace.json`, finds nothing, and falls back to the default empty layout — then saves that default right away, overwriting the good copy.
+So `loadLayout()` really does go through the redirect and gets our file back — and the layout still does not appear. A/B test, same stored layout with three open notes, only the restore step toggled:
 
-So version 1.1.0 does two more things:
+| restore step | tabs after restart |
+|---|---|
+| off | **0** (file overwritten with the default empty layout) |
+| on | 3, exactly as saved |
+
+Why the read is discarded is not fully established (likely `initializeWithAdapter` running again after the workspace tree already exists). What *is* established: without an explicit restore, the default layout ends up saved over your file.
+
+So version 1.1.0 does three more things:
 
 1. **Waits for `onLayoutReady`, then puts the stored layout back** — via `workspace.changeLayout(stored)`, only when the file sets differ (no pointless reload on every launch).
 2. **Drops saves during that window**, so the empty default layout never lands on top of your stored one. Writes resume as soon as the layout is back.
