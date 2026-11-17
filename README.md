@@ -10,17 +10,30 @@ An Obsidian plugin (desktop only) that redirects reads and writes of `.obsidian/
 
 ## The problem
 
-Put an Obsidian vault in iCloud Drive (or Dropbox, or OneDrive) and sooner or later you see this:
+Put an Obsidian vault in iCloud Drive (or Dropbox, or OneDrive) and you end up fighting two separate problems.
 
-- The sync indicator in Finder / the menu bar **never stops spinning**.
+### 1. The sync indicator never stops
+
 - `.obsidian/workspace.json` gets rewritten roughly every 30 seconds, even while you're only reading.
-- Open the same vault on two devices and they overwrite each other's layout, leaving conflict copies behind: `workspace 2.json`, `workspace 3.json`, `workspace 4.json`, … One real case had **34 of them, all created in the same second**.
-- Upload traffic and version history are consumed by a file that stores nothing but "which panes were open".
+- The sync indicator in Finder / the menu bar **keeps spinning**, and upload traffic plus version history get consumed by a file that stores nothing but "which panes were open".
 
-Two things cause it:
+Cause: `Workspace.saveLayout()` runs on layout events and rewrites the entire file each time. Switching notes, panes refreshing, plugins polling — every one of them triggers a save.
 
-1. `Workspace.saveLayout()` runs on layout events and writes the entire file each time. Switching notes, panes refreshing, plugins polling — every one of them triggers a save.
-2. **iCloud has no way to exclude a single file from sync.** There is no `.nosync`, no per-file ignore. If it's in the vault, it syncs.
+### 2. Multi-device sync turns into a pile of conflict copies
+
+Open the same vault on two machines and let both sync through the cloud, and the layout file becomes a collision point. Each device writes the **whole file**, the sync client sees concurrent modifications, and resolves them the only way it can — by keeping both:
+
+```
+.obsidian/workspace.json
+.obsidian/workspace 2.json
+.obsidian/workspace 3.json
+...
+.obsidian/workspace 34.json
+```
+
+They are never cleaned up by anything. In one real vault, **34 of them were created within the same second**, and from then on every full re-index has to enumerate and re-sync all 34 stale layout snapshots — forever. Conflict copies also appear under other names (`workspace.json 2.json`, `workspace(1).json`) depending on which sync client produced them.
+
+The deeper reason both problems exist: **iCloud has no way to exclude a single file from sync.** There is no `.nosync`, no per-file ignore. If it's in the vault, it syncs — and if two devices both write it, it forks.
 
 ## What this plugin does
 
@@ -46,7 +59,11 @@ A plugin runs in the same process, so this plugin wraps those methods:
 
 `saveLayout()` wraps the write in an empty `try{}catch{}`, so intercepting it produces no errors and no notices.
 
-Net effect: **your layout is still remembered**, but the vault's `workspace.json` is never touched, so your sync client has nothing to upload.
+Net effect:
+
+- **Your layout is still remembered** — same behaviour as before, just stored somewhere else.
+- The vault's `workspace.json` is never written, so **your sync client has nothing to upload**.
+- Because no device writes it into the vault any more, **the multi-device collision disappears entirely**: no concurrent writes, no conflict copies, and any `workspace N.json` left over from before can be deleted for good.
 
 ## What it does *not* do
 

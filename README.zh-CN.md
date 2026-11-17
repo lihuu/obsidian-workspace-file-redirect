@@ -10,17 +10,30 @@
 
 ## 要解决的问题
 
-把 Obsidian vault 放进 iCloud Drive（或 Dropbox、OneDrive）之后，迟早会遇到这些：
+把 Obsidian vault 放进 iCloud Drive（或 Dropbox、OneDrive），你要对付的是两个互相独立的问题。
 
-- Finder 或菜单栏的同步图标 **一直转个不停**
+### 1. 同步图标一直转个不停
+
 - `.obsidian/workspace.json` 大约每 30 秒就被重写一次，即使你只是在看
-- 两台设备同时打开同一个 vault，布局互相覆盖，留下一堆冲突副本：`workspace 2.json`、`workspace 3.json`、`workspace 4.json`…… 实际遇到过一次 **34 个，全是同一秒生成的**
-- 上传流量和版本历史被一个只记录「打开了哪些面板」的文件吃掉
+- Finder 或菜单栏的同步图标 **一直在转**，上传流量和版本历史被一个只记录「打开了哪些面板」的文件吃掉
 
-原因有两条：
+原因：`Workspace.saveLayout()` 挂在布局事件上，每次触发都整份重写。切笔记、面板刷新、插件轮询——任何一件事都会触发一次保存。
 
-1. `Workspace.saveLayout()` 挂在布局事件上，每次触发都整份重写。切笔记、面板刷新、插件轮询——任何一件事都会触发一次保存。
-2. **iCloud 没有「排除某个文件」的能力。** 没有 `.nosync`，没有单文件忽略。只要文件在 vault 里，它就会被同步。
+### 2. 多端同时用网盘同步，冲突副本越堆越多
+
+两台机器打开同一个 vault、都走网盘同步，布局文件就成了碰撞点。每台设备写的是 **整份文件**，同步客户端看到并发修改，只能用它唯一会的办法解决——两份都留着：
+
+```
+.obsidian/workspace.json
+.obsidian/workspace 2.json
+.obsidian/workspace 3.json
+...
+.obsidian/workspace 34.json
+```
+
+而且没有任何东西会清理它们。实际遇到过一个 vault 里 **34 个副本全是同一秒生成的**；从那以后每次全量重建索引都要重新枚举、重新同步这 34 份过期的布局快照——永远如此。不同同步客户端留下的名字还不一样（`workspace.json 2.json`、`workspace(1).json`）。
+
+两个问题共同的根子：**iCloud 没有「排除某个文件」的能力。** 没有 `.nosync`，没有单文件忽略。只要文件在 vault 里，它就会被同步；只要两台设备都写它，它就会分叉。
 
 ## 插件做了什么
 
@@ -46,7 +59,11 @@ async saveLayout() {
 
 `saveLayout()` 外面套的是空的 `try{}catch{}`，所以拦截它不会产生任何报错或提示。
 
-结果：**布局照样被记住**，但 vault 里的 `workspace.json` 一个字节都不动，同步盘也就没东西可传。
+结果：
+
+- **布局照样被记住**——行为跟原来一样，只是换了存放位置
+- vault 里的 `workspace.json` 一个字节都不动，**同步盘没东西可传**
+- 因为再没有设备往 vault 里写它，**多端碰撞直接消失**：没有并发写、不会产生冲突副本，之前遗留的 `workspace N.json` 也可以放心删干净
 
 ## 它不做什么
 
