@@ -57,6 +57,15 @@ A plugin runs in the same process, so this plugin wraps those methods:
 | `adapter.exists` | checks the local file |
 | Node `fs` `writeFile` / `rename` | safety net — anything bypassing the adapter still can't land in the vault |
 
+Matching is by **exact resolved path**, not by filename. The plugin only touches these two files:
+
+```
+<vault>/.obsidian/workspace.json
+<vault>/.obsidian/workspace-mobile.json
+```
+
+A note that happens to be called `workspace.json`, or any `workspace.json` inside some other folder or vault, is left completely alone — no interception, no silent failed writes.
+
 `saveLayout()` wraps the write in an empty `try{}catch{}`, so intercepting it produces no errors and no notices.
 
 Net effect:

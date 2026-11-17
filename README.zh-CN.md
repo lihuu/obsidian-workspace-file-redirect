@@ -57,6 +57,15 @@ async saveLayout() {
 | `adapter.exists` | 检查本地那份 |
 | Node `fs` 的 `writeFile` / `rename` | 兜底——绕过 adapter 的写入也进不了 vault |
 
+匹配用的是**解析后的确切路径**，不是文件名。插件只接管这两个文件：
+
+```
+<vault>/.obsidian/workspace.json
+<vault>/.obsidian/workspace-mobile.json
+```
+
+刚好叫 `workspace.json` 的笔记、或者其他目录、其他 vault 里的同名文件，一概不碰——不拦截，也不会有写不进去还不出声的情况。
+
 `saveLayout()` 外面套的是空的 `try{}catch{}`，所以拦截它不会产生任何报错或提示。
 
 结果：
