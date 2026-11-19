@@ -109,6 +109,22 @@ READ .obsidian/workspace.json
 - 不碰笔记、插件、设置——只管布局文件。
 - 移动端跑不了（iOS/Android 没有 Node `fs`）。手机端用的是另一个文件 `workspace-mobile.json`，两边互不影响。
 
+## 文件系统访问范围
+
+这个插件用了 Node 的 `fs` 模块，所以 `isDesktopOnly` 是 `true`。它实际碰到的东西只有下面这些：
+
+| 路径 | 操作 | 为什么 |
+| --- | --- | --- |
+| `<存放目录>/<vault 名>/workspace.json` | 读、写 | 被重定向过去的布局文件（默认 `~/.config/obsidian-workspace/...`） |
+| `<存放目录>/<vault 名>/workspace.json.bak` | 写 | 每次启动留一份备份，覆盖错了还能捞回来 |
+| `<存放目录>/redirect.log` | 追加 | 只在设置里打开「调试日志」时写，默认关闭 |
+
+不联网、不上报，不读写其他任何文件。
+
+另外它会包一层 `vault.adapter.read / write / writeBinary / exists` 和全局的 `fs.writeFile / writeFileSync / rename / renameSync`。每个被包住的函数都先把参数解析成**确切路径**，和 `<vault>/.obsidian/workspace.json`、`<vault>/.obsidian/workspace-mobile.json` 逐个比对，不是这两个就直接调原函数、不做任何拦截。所有补丁在 `onunload()` 里全部还原。
+
+代价是：这两个文件名被接管期间，其他插件如果直接往 `.obsidian/workspace.json` 写，这次写入会被丢掉——这是为了兜住绕过 vault adapter 的写入，别的文件都不受影响。代码就是 `main.js` 里三百多行普通 JavaScript，没有压缩、没有混淆。
+
 ## 安装
 
 手动安装：

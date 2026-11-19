@@ -109,6 +109,22 @@ Net effect:
 - It does not touch your notes, plugins, or settings — only the layout file.
 - It does not run on mobile. iOS/Android have no Node `fs`. Mobile uses a different file (`workspace-mobile.json`), so it's unaffected either way.
 
+## Filesystem access
+
+This plugin uses Node's `fs` module, which is why `isDesktopOnly` is `true`. Here is everything it touches:
+
+| Path | Access | Why |
+| --- | --- | --- |
+| `<storage folder>/<vault name>/workspace.json` | read, write | the redirected layout file (default `~/.config/obsidian-workspace/...`) |
+| `<storage folder>/<vault name>/workspace.json.bak` | write | one backup written at each startup, so a bad overwrite is recoverable |
+| `<storage folder>/redirect.log` | append | only while **Debug log** is enabled in the settings; off by default |
+
+No network access, no telemetry, no other file is read or written.
+
+The plugin also wraps `vault.adapter.read / write / writeBinary / exists` and the global `fs.writeFile / writeFileSync / rename / renameSync`. Every wrapped function first resolves the **exact path** and compares it against `<vault>/.obsidian/workspace.json` and `<vault>/.obsidian/workspace-mobile.json`; anything else is passed straight through to the original function. All patches are undone in `onunload()`.
+
+Because those two names are intercepted, another plugin writing to exactly `.obsidian/workspace.json` will have that write dropped while this plugin is enabled. That is the cost of catching writes that bypass the vault adapter — no other file is affected. The code is ~350 lines of plain JavaScript in `main.js`, nothing is minified or obfuscated.
+
 ## Install
 
 Manual install:
