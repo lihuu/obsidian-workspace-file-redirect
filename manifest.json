@@ -1,9 +1,9 @@
 {
   "id": "workspace-file-redirect",
   "name": "Workspace File Redirect",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "minAppVersion": "1.4.0",
-  "description": "Redirect Obsidian's workspace layout file to a local folder outside the vault: stops constant sync churn and multi-device conflict copies, while the layout is still remembered.",
+  "description": "Redirect the workspace layout file to a local folder outside the vault. Stops constant sync churn and multi-device conflict copies, while the layout is still remembered.",
   "author": "lihuu",
   "authorUrl": "https://github.com/lihuu",
   "isDesktopOnly": true
